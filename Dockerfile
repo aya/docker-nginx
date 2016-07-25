@@ -1,17 +1,19 @@
-FROM centos:centos7
+FROM centos:6
+MAINTAINER "Yann Autissier" <yann.autissier@gmail.com>
 
-MAINTAINER "Dylan Lindgren" <dylan.lindgren@gmail.com>
+ENV NGX_VERSION 1.11.2
 
 WORKDIR /tmp
 
 # Install prerequisites for Nginx compile
-RUN yum install -y \
+RUN yum update -y && yum install -y \
         wget \
         tar \
         openssl-devel \
         gcc \
         gcc-c++ \
         make \
+        patch \
         zlib-devel \
         pcre-devel \
         gd-devel \
@@ -19,14 +21,16 @@ RUN yum install -y \
         git
 
 # Download Nginx and Nginx modules source
-RUN wget http://nginx.org/download/nginx-1.6.1.tar.gz -O nginx.tar.gz && \
-    mkdir /tmp/nginx && \
-    tar -xzvf nginx.tar.gz -C /tmp/nginx --strip-components=1 &&\
-    git clone https://github.com/stnoonan/spnego-http-auth-nginx-module.git nginx/spnego-http-auth-nginx-module
+RUN wget http://nginx.org/download/nginx-$NGX_VERSION.tar.gz -O nginx.tar.gz && \
+    mkdir -p /tmp/nginx && \
+    tar -xzvf nginx.tar.gz -C /tmp/nginx --strip-components=1 && \
+    git clone https://github.com/aya/nginx_tcp_proxy_module.git nginx/nginx_tcp_proxy_module && \
+    rm nginx.tar.gz
 
 # Build Nginx
 WORKDIR /tmp/nginx
-RUN ./configure \
+RUN patch -p1 < nginx_tcp_proxy_module/tcp.patch && \
+    ./configure \
         --user=nginx \
         --with-debug \
         --group=nginx \
@@ -40,7 +44,6 @@ RUN ./configure \
         --with-http_gzip_static_module \
         --with-http_stub_status_module \
         --with-http_ssl_module \
-        --with-http_spdy_module \
         --with-pcre \
         --with-http_image_filter_module \
         --with-file-aio \
@@ -49,21 +52,19 @@ RUN ./configure \
         --with-http_flv_module \
         --with-http_mp4_module \
         --with-http_gunzip_module \
-        --add-module=spnego-http-auth-nginx-module && \
+        --add-module=nginx_tcp_proxy_module && \
     make && \
     make install
 
 
 # Cleanup after Nginx build
-RUN yum remove -y \
+RUN yum erase -y \
         wget \
-        tar \
         gcc \
         gcc-c++ \
-        make \
+        patch \
         git && \
-    yum autoremove -y && \
-    rm -rf /tmp/*
+    rm -rf /tmp/nginx
 
 # Configure filesystem to support running Nginx
 RUN adduser -c "Nginx user" nginx && \
